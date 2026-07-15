@@ -117,7 +117,7 @@ This creates three reproducible scenarios for the dashboard:
 python dashboard.py
 ```
 
-Open [http://127.0.0.1:7860](http://127.0.0.1:7860) in a browser. The dashboard displays saved analyses with severity-based coloring.
+Open [http://127.0.0.1:8760](http://127.0.0.1:8760) in a browser. The dashboard displays saved analyses with severity-based coloring.
 
 ## Configuration
 
