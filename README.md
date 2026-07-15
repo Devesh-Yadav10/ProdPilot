@@ -303,5 +303,8 @@ python -m pytest -v
 python seed_demo.py
 python dashboard.py
 ```
-
 Then open [http://127.0.0.1:7860](http://127.0.0.1:7860). No GitHub token, webhook tunnel, or paid LLM account is needed for this deterministic demo path.
+
+## Figma Workflow
+
+[ProdPilot-Figma-Workflow](https://www.figma.com/board/rdea1bdFcPJ1mVJUS13fsU/ProdPilot-workflow?node-id=0-1&t=Ff1t44gqj3mPMKkE-1)
