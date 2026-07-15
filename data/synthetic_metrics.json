@@ -1,0 +1,7 @@
+{
+  "avg_orders_per_user": 5,
+  "avg_items_per_order": 3,
+  "connection_pool_size": 20,
+  "p95_latency_ms": 150,
+  "peak_concurrent_users": 1000
+}

@@ -1,0 +1,34 @@
+[
+  {
+    "pr_number": "4",
+    "title": "Create demo_n_plus_one.py",
+    "severity": "high",
+    "risk_summary": "1 nested query finding(s) project 15 queries/request, 100000.0 QPS, and 75000.0% pool utilization; the calculated threshold is breached.",
+    "finding_count": 1,
+    "analyzed_at": "2026-07-15T06:23:18+00:00"
+  },
+  {
+    "pr_number": "103",
+    "title": "Seeded clean PR example",
+    "severity": "low",
+    "risk_summary": "0 nested query finding(s) project 0 queries/request, 0.0 QPS, and 0.0% pool utilization; the calculated threshold is not breached.",
+    "finding_count": 0,
+    "analyzed_at": "2026-07-15T05:29:21+00:00"
+  },
+  {
+    "pr_number": "102",
+    "title": "Seeded borderline query example",
+    "severity": "low",
+    "risk_summary": "1 nested query finding(s) project 5 queries/request, 66.67 QPS, and 50.0% pool utilization; the calculated threshold is not breached.",
+    "finding_count": 1,
+    "analyzed_at": "2026-07-15T05:29:21+00:00"
+  },
+  {
+    "pr_number": "101",
+    "title": "Seeded N+1 query example",
+    "severity": "high",
+    "risk_summary": "1 nested query finding(s) project 15 queries/request, 100000.0 QPS, and 75000.0% pool utilization; the calculated threshold is breached.",
+    "finding_count": 1,
+    "analyzed_at": "2026-07-15T05:29:14+00:00"
+  }
+]
