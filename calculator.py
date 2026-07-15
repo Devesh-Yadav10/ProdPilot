@@ -3,7 +3,7 @@
 
 POOL_UTILIZATION_THRESHOLD_PCT = 100.0
 
-
+# no of queries per request based on nesting depth
 def _queries_per_request(nesting_depth: int, metrics: dict) -> int:
     orders = metrics["avg_orders_per_user"]
     items = metrics["avg_items_per_order"]
@@ -18,6 +18,9 @@ def compute_impact(findings: list, metrics: dict) -> dict:
         _queries_per_request(finding.get("nesting_depth", 1), metrics)
         for finding in findings
     )
+
+    # how many requests per second can the system serve at peak load,
+    # given that each request takes p95_latency_ms
     p95_latency_ms = metrics["p95_latency_ms"]
     latency_seconds = p95_latency_ms / 1000
     request_rate = (
@@ -25,6 +28,7 @@ def compute_impact(findings: list, metrics: dict) -> dict:
         if latency_seconds
         else 0
     )
+    
     projected_qps = query_count * request_rate
     pool_size = metrics["connection_pool_size"]
     pool_utilization_pct = (

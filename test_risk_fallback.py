@@ -28,7 +28,7 @@ test_impact = {
 }
 
 print("Testing Risk Agent with API key set (expecting fallback due to quota)...")
-result = assess_risk(test_findings, test_metrics, test_impact)
+result = assess_risk(test_findings, test_impact)
 print("Result:")
 print(json.dumps(result, indent=2))
 

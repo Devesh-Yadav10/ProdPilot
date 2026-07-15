@@ -43,11 +43,19 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 Edit `.env` and set:
 
 ```dotenv
-OPENAI_API_KEY=your_openai_api_key
+GROQ_API_KEY=your_groq_api_key
 GITHUB_TOKEN=your_github_fine_grained_token
-OPENAI_MODEL=gpt-5.6-terra
-IMPACT_AGENT_MODEL=gpt-5.6-terra
+GITHUB_WEBHOOK_SECRET=your_github_webhook_secret
+LLM_MODEL=openai/gpt-oss-20b
+IMPACT_AGENT_MODEL=openai/gpt-oss-20b
 ```
+
+Create a Groq API key in the [Groq Console](https://console.groq.com/keys) and
+copy it into `GROQ_API_KEY`. The Risk and Recommendation agents use
+`LLM_MODEL`; the Impact agent uses `IMPACT_AGENT_MODEL`. Both default to
+`openai/gpt-oss-20b` via Groq's OpenAI-compatible Chat Completions endpoint.
+If `GROQ_API_KEY` is absent, all three agents use their deterministic fallbacks
+and make no network calls.
 
 For a fine-grained GitHub token, grant the scratch repository **Contents: Read**,
 **Issues: Read and write**, **Pull requests: Read**, and **Metadata: Read**.
@@ -100,6 +108,7 @@ appear with red, green, and green severity rows. The history is stored in
 5. In the scratch repository, open **Settings → Webhooks → Add webhook**:
    - Payload URL: the smee URL
    - Content type: `application/json`
+   - Secret: a strong value matching `GITHUB_WEBHOOK_SECRET` in `.env`
    - Events: **Let me select individual events → Pull requests**
    - Active: enabled
 
@@ -129,3 +138,5 @@ This creates three branches and PRs matching the local demo fixtures.
 - Every LLM response is structured JSON with defensive parsing and a fallback.
 - GitHub rate limits, malformed payloads, empty Python changes, telemetry
   failures, and LLM failures are logged without crashing the webhook receiver.
+- GitHub webhook payloads are HMAC-verified with `GITHUB_WEBHOOK_SECRET`; the
+  server will not start until this variable is set.

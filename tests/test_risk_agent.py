@@ -10,7 +10,7 @@ pytestmark = pytest.mark.integration
 
 @pytest.mark.skipif(
     os.getenv("RUN_LLM_INTEGRATION") != "1",
-    reason="Set RUN_LLM_INTEGRATION=1 to run live OpenAI integration tests",
+    reason="Set RUN_LLM_INTEGRATION=1 to run live Groq integration tests",
 )
 def test_risk_agent_known_nested_query() -> None:
     findings = [{"pattern_type": "nested_query", "nesting_depth": 2}]

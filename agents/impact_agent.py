@@ -5,14 +5,14 @@ import logging
 import os
 import re
 
-import httpx
 from dotenv import load_dotenv
 from openai import OpenAI
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-MODEL = os.getenv("IMPACT_AGENT_MODEL", "gpt-5.6-terra")
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+MODEL = os.getenv("IMPACT_AGENT_MODEL", "openai/gpt-oss-20b")
 
 SYSTEM_PROMPT = """You are a principal engineer translating a PR risk summary into
 a presentation-ready business impact narrative. Do not invent numbers or
@@ -39,11 +39,7 @@ IMPACT_SCHEMA = {
 def _client() -> OpenAI:
     for variable in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
         os.environ.pop(variable, None)
-    kwargs = {"api_key": os.getenv("OPENAI_API_KEY"), "http_client": httpx.Client()}
-    base_url = os.getenv("OPENAI_BASE_URL")
-    if base_url:
-        kwargs["base_url"] = base_url
-    return OpenAI(**kwargs)
+    return OpenAI(api_key=os.getenv("GROQ_API_KEY"), base_url=GROQ_BASE_URL)
 
 
 def _parse_response(raw_text: str) -> dict | None:
@@ -66,15 +62,13 @@ def _number(summary: str, pattern: str) -> str:
     return match.group(1) if match else "0"
 
 
-def _fallback_impact(risk_summary: str) -> dict:
-    lowered = risk_summary.lower()
-    clean = "0 nested query" in lowered
-    breached = "not breached" not in lowered and "threshold is breached" in lowered
-    severity_match = re.search(r"\b(high|medium|low)\b", lowered)
-    severity = severity_match.group(1) if severity_match else ("low" if not breached else "high")
-    queries = _number(risk_summary, r"([\d,.]+)\s+queries/request")
-    qps = _number(risk_summary, r"([\d,.]+)\s+QPS")
-    pool = _number(risk_summary, r"([\d,.]+)%\s+pool utilization")
+def _fallback_impact(risk: dict, impact: dict) -> dict:
+    breached = bool(risk.get("threshold_breached", impact.get("threshold_breached", False)))
+    severity = risk.get("severity", "low")
+    query_count = impact.get("projected_query_count", 0)
+    qps = impact.get("projected_qps", 0)
+    pool = impact.get("pool_utilization_pct", 0)
+    clean = query_count == 0
 
     if clean:
         return {
@@ -86,33 +80,38 @@ def _fallback_impact(risk_summary: str) -> dict:
         return {
             "user_facing_impact": f"Users may see slow responses, timeouts, or errors when traffic reaches the affected path ({severity} risk).",
             "cost_estimate": "Potential lost conversions and incident-response cost during peak traffic; exact dollars require business telemetry.",
-            "narrative": f"deploy -> traffic reaches the affected endpoint -> each request can issue {queries} queries at {qps} QPS -> the connection pool reaches {pool}% utilization and saturates -> queries queue and latency spikes -> users experience slow pages or timeouts -> eager-load or batch the related records before deployment",
+            "narrative": f"deploy -> traffic reaches the affected endpoint -> each request can issue {query_count} queries at {qps} QPS -> the connection pool reaches {pool}% utilization and saturates -> queries queue and latency spikes -> users experience slow pages or timeouts -> eager-load or batch the related records before deployment",
         }
     return {
         "user_facing_impact": "No immediate user-facing impact is expected at the supplied traffic level, but the query pattern reduces headroom.",
         "cost_estimate": "No immediate incident cost expected; future traffic growth could create performance cost.",
-        "narrative": f"deploy -> traffic reaches the affected endpoint -> each request can issue {queries} queries at {qps} QPS -> pool utilization remains {pool}% without threshold breach -> no immediate latency spike or user impact -> eager-load or batch records to preserve headroom",
+        "narrative": f"deploy -> traffic reaches the affected endpoint -> each request can issue {query_count} queries at {qps} QPS -> pool utilization remains {pool}% without threshold breach -> no immediate latency spike or user impact -> eager-load or batch records to preserve headroom",
     }
 
 
-def assess_business_impact(risk_summary: str) -> dict:
-    """Generate a causal business-impact narrative from a risk summary."""
-    fallback = _fallback_impact(risk_summary)
-    if "0 nested query" in risk_summary.lower():
+def assess_business_impact(risk: dict, impact: dict) -> dict:
+    """Generate a causal business-impact narrative from risk and impact data."""
+    fallback = _fallback_impact(risk, impact)
+    if impact.get("projected_query_count", 0) == 0:
         return fallback
-    if not os.getenv("OPENAI_API_KEY"):
-        logger.warning("OPENAI_API_KEY is not configured; using fallback impact narrative")
+    if not os.getenv("GROQ_API_KEY"):
+        logger.warning("GROQ_API_KEY is not configured; using fallback impact narrative")
         return fallback
+
+    payload = {"risk_summary": risk.get("risk_summary", ""), "impact": impact}
     try:
-        response = _client().responses.create(
+        response = _client().chat.completions.create(
             model=MODEL,
-            input=[
+            messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": risk_summary},
+                {"role": "user", "content": json.dumps(payload, indent=2)},
             ],
-            text={"format": {"type": "json_schema", "name": "impact", "schema": IMPACT_SCHEMA}},
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"name": "impact", "strict": True, "schema": IMPACT_SCHEMA},
+            },
         )
-        return _parse_response(response.output_text) or fallback
+        return _parse_response(response.choices[0].message.content or "") or fallback
     except Exception as error:
         logger.warning("Impact Agent model %s failed: %s", MODEL, error)
         return fallback

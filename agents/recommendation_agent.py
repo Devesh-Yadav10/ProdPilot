@@ -5,14 +5,13 @@ import logging
 import os
 
 from dotenv import load_dotenv
-import httpx
 from openai import OpenAI
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-MODEL = os.getenv("OPENAI_MODEL", "gpt-5.6-terra")
-FALLBACK_MODEL = os.getenv("OPENAI_FALLBACK_MODEL", "gpt-4o-mini")
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+MODEL = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
 
 SYSTEM_PROMPT = """You are a senior Python performance engineer.
 Given a risk summary and the original problematic code snippet, suggest one
@@ -35,11 +34,7 @@ RECOMMENDATION_SCHEMA = {
 def _client() -> OpenAI:
     for variable in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
         os.environ.pop(variable, None)
-    kwargs = {"api_key": os.getenv("OPENAI_API_KEY"), "http_client": httpx.Client()}
-    base_url = os.getenv("OPENAI_BASE_URL")
-    if base_url:
-        kwargs["base_url"] = base_url
-    return OpenAI(**kwargs)
+    return OpenAI(api_key=os.getenv("GROQ_API_KEY"), base_url=GROQ_BASE_URL)
 
 
 def _parse_response(raw_text: str) -> dict | None:
@@ -67,21 +62,16 @@ def _parse_response(raw_text: str) -> dict | None:
 
 def _fallback_recommendation(snippet: str) -> dict:
     return {
-        "suggested_fix": "Eager-load the products before the nested loops instead of querying once per item.",
+        "suggested_fix": (
+            "This nested database call should likely be replaced with a single "
+            "batched query (e.g., using eager loading, `select_related`/`prefetch_related`, "
+            "or an `IN` query) executed before the loop, rather than querying once per iteration."
+        ),
         "fix_code_snippet": (
-            "# Load products in one batch before iterating.\n"
-            "product_ids = [item.product_id for order in user.orders for item in order.items]\n"
-            "products = {p.id: p for p in Product.query.filter(Product.id.in_(product_ids)).all()}\n\n"
-            "for order in user.orders:\n"
-            "    for item in order.items:\n"
-            "        product = products[item.product_id]"
+            f"# Original pattern:\n{snippet}\n\n"
+            "# Consider batching this into a single query before the loop."
         ),
     }
-
-
-def _quota_error(error: Exception) -> bool:
-    message = str(error).lower()
-    return "insufficient_quota" in message or ("429" in message and "quota" in message)
 
 
 def suggest_fix(risk_summary: str, snippet: str) -> dict:
@@ -92,37 +82,31 @@ def suggest_fix(risk_summary: str, snippet: str) -> dict:
             "suggested_fix": "No fix is required because the Code Agent found no query pattern.",
             "fix_code_snippet": "",
         }
-    if not os.getenv("OPENAI_API_KEY"):
-        logger.warning("OPENAI_API_KEY is not configured; using fallback recommendation")
+    if not os.getenv("GROQ_API_KEY"):
+        logger.warning("GROQ_API_KEY is not configured; using fallback recommendation")
         return fallback
 
     payload = {"risk_summary": risk_summary, "snippet": snippet}
     try:
         client = _client()
-        models = [MODEL] if MODEL == FALLBACK_MODEL else [MODEL, FALLBACK_MODEL]
-        for model in models:
-            try:
-                response = client.responses.create(
-                    model=model,
-                    input=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": json.dumps(payload, indent=2)},
-                    ],
-                    text={
-                        "format": {
-                            "type": "json_schema",
-                            "name": "recommendation",
-                            "schema": RECOMMENDATION_SCHEMA,
-                        }
-                    },
-                )
-                parsed = _parse_response(response.output_text)
-                if parsed is not None:
-                    return parsed
-            except Exception as error:
-                logger.warning("Recommendation Agent model %s failed: %s", model, error)
-                if _quota_error(error):
-                    break
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": json.dumps(payload, indent=2)},
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "recommendation",
+                    "strict": True,
+                    "schema": RECOMMENDATION_SCHEMA,
+                },
+            },
+        )
+        parsed = _parse_response(response.choices[0].message.content or "")
+        if parsed is not None:
+            return parsed
     except Exception as error:
-        logger.error("Recommendation Agent client setup failed: %s", error)
+        logger.warning("Recommendation Agent model %s failed: %s", MODEL, error)
     return fallback

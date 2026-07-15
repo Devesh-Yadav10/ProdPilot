@@ -46,7 +46,7 @@ def run_scenario(name: str) -> dict:
     risk = assess_risk(code_result["findings"], impact)
     snippet = code_result["findings"][0]["snippet"] if code_result["findings"] else ""
     recommendation = suggest_fix(risk["risk_summary"], snippet)
-    business_impact = assess_business_impact(risk["risk_summary"])
+    business_impact = assess_business_impact(risk, impact)
     return {
         "code_agent": code_result,
         "calculator": impact,
@@ -72,11 +72,11 @@ def test_full_chain_scenario_does_not_crash(scenario: str) -> None:
 
 
 def test_fallback_impact_covers_all_scenarios() -> None:
-    summaries = [
-        "1 nested query finding(s) project 15 queries/request, 100000.0 QPS, and 75000.0% pool utilization; the calculated threshold is breached.",
-        "1 nested query finding(s) project 5 queries/request, 33.33 QPS, and 50.0% pool utilization; the calculated threshold is not breached.",
-        "0 nested query finding(s) project 0 queries/request, 0 QPS, and 0% pool utilization; the calculated threshold is not breached.",
+    scenarios = [
+        ({"severity": "high", "threshold_breached": True}, {"projected_query_count": 15, "projected_qps": 100000.0, "pool_utilization_pct": 75000.0}),
+        ({"severity": "low", "threshold_breached": False}, {"projected_query_count": 5, "projected_qps": 33.33, "pool_utilization_pct": 50.0}),
+        ({"severity": "low", "threshold_breached": False}, {"projected_query_count": 0, "projected_qps": 0, "pool_utilization_pct": 0}),
     ]
-    for summary in summaries:
-        result = _fallback_impact(summary)
+    for risk, impact in scenarios:
+        result = _fallback_impact(risk, impact)
         assert result["narrative"]

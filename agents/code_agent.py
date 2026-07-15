@@ -3,7 +3,7 @@
 import ast
 from dataclasses import asdict, dataclass
 
-
+# record for each problem found
 @dataclass
 class Finding:
     file: str
@@ -20,16 +20,19 @@ class _LoopQueryVisitor(ast.NodeVisitor):
         self.loop_depth = 0
         self.findings: list[Finding] = []
 
+    # it tracks how many loops deep the code currently is
     def visit_For(self, node: ast.For) -> None:
         self.loop_depth += 1
         self.generic_visit(node)
         self.loop_depth -= 1
 
+    # same as above, for while loop
     def visit_While(self, node: ast.While) -> None:
         self.loop_depth += 1
         self.generic_visit(node)
         self.loop_depth -= 1
 
+    # everytime it hits a function node, it checks if we are inside a loop or is this a DB call, if yes, records a finding
     def visit_Call(self, node: ast.Call) -> None:
         if self.loop_depth and self._is_db_call(node):
             self.findings.append(
@@ -43,6 +46,7 @@ class _LoopQueryVisitor(ast.NodeVisitor):
             )
         self.generic_visit(node)
 
+    # For something like User.objects.get(id=x)
     @staticmethod
     def _call_path(node: ast.Call) -> str:
         parts: list[str] = []
@@ -54,6 +58,7 @@ class _LoopQueryVisitor(ast.NodeVisitor):
             parts.append(current.id)
         return ".".join(reversed(parts))
 
+    # flags the call if its path ends in .query.get, .objects.get, or .cursor.execute
     def _is_db_call(self, node: ast.Call) -> bool:
         path = self._call_path(node)
         return path.endswith((".query.get", ".objects.get", ".cursor.execute"))

@@ -5,14 +5,13 @@ import logging
 import os
 
 from dotenv import load_dotenv
-import httpx
 from openai import OpenAI
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-MODEL = os.getenv("OPENAI_MODEL", "gpt-5.6-terra")
-FALLBACK_MODEL = os.getenv("OPENAI_FALLBACK_MODEL", "gpt-4o-mini")
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+MODEL = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
 
 SYSTEM_PROMPT = """You are a senior backend reliability engineer assessing PR risk.
 Reason only over the pre-computed impact numbers supplied in the input. Do not
@@ -33,15 +32,10 @@ RISK_SCHEMA = {
     "additionalProperties": False,
 }
 
-
 def _client() -> OpenAI:
     for variable in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
         os.environ.pop(variable, None)
-    kwargs = {"api_key": os.getenv("OPENAI_API_KEY"), "http_client": httpx.Client()}
-    base_url = os.getenv("OPENAI_BASE_URL")
-    if base_url:
-        kwargs["base_url"] = base_url
-    return OpenAI(**kwargs)
+    return OpenAI(api_key=os.getenv("GROQ_API_KEY"), base_url=GROQ_BASE_URL)
 
 
 def _parse_response(raw_text: str) -> dict | None:
@@ -83,41 +77,32 @@ def _fallback_assessment(findings: list[dict], impact: dict) -> dict:
     }
 
 
-def _quota_error(error: Exception) -> bool:
-    message = str(error).lower()
-    return "insufficient_quota" in message or ("429" in message and "quota" in message)
-
-
 def assess_risk(findings: list[dict], impact: dict) -> dict:
-    """Assess risk from findings and calculator output using the Responses API."""
+    """Assess risk from findings and calculator output using Groq Chat Completions."""
     fallback = _fallback_assessment(findings, impact)
     if not findings:
         return fallback
-    if not os.getenv("OPENAI_API_KEY"):
-        logger.warning("OPENAI_API_KEY is not configured; using fallback risk assessment")
+    if not os.getenv("GROQ_API_KEY"):
+        logger.warning("GROQ_API_KEY is not configured; using fallback risk assessment")
         return fallback
 
     payload = {"findings": findings, "impact": impact}
     try:
         client = _client()
-        models = [MODEL] if MODEL == FALLBACK_MODEL else [MODEL, FALLBACK_MODEL]
-        for model in models:
-            try:
-                response = client.responses.create(
-                    model=model,
-                    input=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": json.dumps(payload, indent=2)},
-                    ],
-                    text={"format": {"type": "json_schema", "name": "risk", "schema": RISK_SCHEMA}},
-                )
-                parsed = _parse_response(response.output_text)
-                if parsed is not None:
-                    return parsed
-            except Exception as error:
-                logger.warning("Risk Agent model %s failed: %s", model, error)
-                if _quota_error(error):
-                    break
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": json.dumps(payload, indent=2)},
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"name": "risk", "strict": True, "schema": RISK_SCHEMA},
+            },
+        )
+        parsed = _parse_response(response.choices[0].message.content or "")
+        if parsed is not None:
+            return parsed
     except Exception as error:
-        logger.error("Risk Agent client setup failed: %s", error)
+        logger.warning("Risk Agent model %s failed: %s", MODEL, error)
     return fallback

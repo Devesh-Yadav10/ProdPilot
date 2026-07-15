@@ -1,5 +1,14 @@
 [
   {
+    "repository": "Devesh-Yadav10/test",
+    "pr_number": "1",
+    "title": "Print product names from user orders",
+    "severity": "high",
+    "risk_summary": "The PR introduces a nested query in try11.py (line 4) with a nesting depth of 3. The impact analysis predicts 45 queries per request, a projected QPS of 300,000.0, pool utilization of 225,000.0%, and an estimated latency of 6,750 ms. All these values exceed the defined thresholds, resulting in a high-risk assessment for the change.",
+    "finding_count": 1,
+    "analyzed_at": "2026-07-15T13:58:49+00:00"
+  },
+  {
     "pr_number": "4",
     "title": "Create demo_n_plus_one.py",
     "severity": "high",
