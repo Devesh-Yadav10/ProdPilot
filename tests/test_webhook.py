@@ -35,10 +35,16 @@ def test_verify_signature_returns_the_raw_body() -> None:
 
 
 def test_verify_signature_rejects_an_invalid_signature() -> None:
-    with pytest.raises(HTTPException, match="Invalid webhook signature") as error:
-        asyncio.run(main.verify_signature(_request(b"{}", "sha256=invalid"), "sha256=invalid"))
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(
+            main.verify_signature(
+                _request(b"{}", "sha256=invalid"),
+                "sha256=invalid",
+            )
+        )
 
     assert error.value.status_code == 401
+    assert error.value.detail == "Invalid webhook signature"
 
 
 def test_processed_delivery_is_recorded_in_sqlite(monkeypatch) -> None:
